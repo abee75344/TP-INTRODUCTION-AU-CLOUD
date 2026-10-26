@@ -5,8 +5,6 @@
 **Étudiants :** ABE YEPI CHRIST-EMMANUEL · AKELY MAYLINE PHOEBE EDWINA · DANHO AKRE PRINCE PATRICK-JUNIOR
 **Environnement :** Windows, VirtualBox (commandes `VBoxManage` dans PowerShell), Ubuntu Server 26.04.1 LTS
 
-> Les éléments **[À COMPLÉTER]** sont des données ou captures encore manquantes.
-> Les éléments **[À VÉRIFIER]** sont des valeurs à confirmer avec la commande indiquée.
 
 **Objectif :** cloner une image Ubuntu en deux VM (`web` et `client`), les relier dans un réseau NAT privé `tp-cloud`, y publier un site avec Nginx, le protéger avec `ufw`, mesurer les ressources, puis nettoyer.
 
@@ -88,7 +86,6 @@ loopback mappings (ipv4)
         127.0.0.1=2
 ```
 
-*[Capture : tp2_natnetwork_list.png]*
 
 *But : créer un réseau privé sans DHCP (adresses fixes), puis ouvrir trois redirections de port depuis l'hôte : 2222 → SSH de `web`, 2223 → SSH de `client`, 8080 → HTTP de `web`. `natnetwork list` vérifie la configuration.*
 
@@ -110,7 +107,7 @@ NIC 1:           MAC: 080027E9B66F, Attachment: NAT Network 'tp-cloud',
                  Bandwidth group: none
 ```
 
-*But : connecter la carte réseau 1 de chaque VM au réseau `tp-cloud` et vérifier les réglages de `web`. La ligne `Memory size` n'apparaît pas dans notre relevé : **[À VÉRIFIER]** en relançant la commande.*
+*But : connecter la carte réseau 1 de chaque VM au réseau `tp-cloud` et vérifier les réglages de `web`. La ligne `Memory size` n'apparaît pas dans notre relevé 
 
 ### Étape 1.6 — Personnaliser `web` (nom, identifiant de machine, clés SSH)
 
@@ -270,7 +267,6 @@ $ sudo rm -f /etc/machine-id && sudo systemd-machine-id-setup
 Initializing machine ID from random generator.
 ```
 
-*[Capture : tp2_ssh_web_hostnamectl.png]*
 
 *But : `ssh-keygen -R` efface les anciennes empreintes enregistrées pour ces ports (celles de `ubuntu-srv`), ce qui évite l'alerte `REMOTE HOST IDENTIFICATION HAS CHANGED`. Les deux connexions passent par les redirections de port de l'étape 1.4. Le nom de `client` a ensuite été corrigé et son identifiant de machine régénéré, pour garantir qu'il diffère de celui de `web`.*
 
@@ -355,7 +351,6 @@ Statistiques Ping pour 10.10.0.10:
     Paquets : envoyés = 2, reçus = 0, perdus = 2 (perte 100%)
 ```
 
-*[Capture : tp2_ping_hote_windows.png]*
 
 *But : montrer que l'hôte n'a pas d'accès direct au réseau privé `tp-cloud`.*
 
@@ -391,7 +386,6 @@ systemctl status nginx --no-pager
       Tasks: 5 (limit: 2734)
 ```
 
-*[Capture : tp2_nginx_status.png]*
 
 *But : installer Nginx et vérifier qu'il tourne. `enabled` signifie qu'il redémarre avec la VM ; le processus maître est accompagné de 4 processus `worker`, un par vCPU.*
 
@@ -415,7 +409,6 @@ ssh -p 2223 etudiant@127.0.0.1 "curl -s http://web"
 <h1>Binome PATRICK - YEPI - MAYLINE : notre premier VM en reseau</h1>
 ```
 
-*[Capture : tp2_navigateur_8080.png]*
 
 *But : `client` joint `web` par son nom sur le port 80 (`-s` : sans barre de progression). Le navigateur de l'hôte affiche la même page sur `http://127.0.0.1:8080`, grâce à la redirection de port `http-web`.*
 
@@ -456,7 +449,6 @@ curl: (28) Connection timed out after 5012 milliseconds
 code retour: 28
 ```
 
-*[Capture : tp2_curl_timeout.png]*
 
 *But : constater que le pare-feu bloque le trafic web alors que Nginx tourne toujours (`-m 5` : abandon après 5 secondes ; `$?` : code retour de curl, protégé par un accent grave dans PowerShell).*
 
@@ -518,7 +510,6 @@ LISTEN  0       4096    [::]:22              users:(("sshd",pid=1521,fd=4),("sys
 LISTEN  0       511     [::]:80              users:(("nginx",pid=2216,fd=6), ... )
 ```
 
-*[Capture : tp2_ss_tlnp.png]*
 
 *But : lister les ports TCP en écoute (`-t` TCP, `-l` en écoute, `-n` numérique, `-p` processus) et le programme associé.*
 
@@ -566,7 +557,6 @@ Filesystem                         Size  Used Avail Use% Mounted on
 4
 ```
 
-*[Capture : tp2_mesures_web.png]*
 
 *But : voir la mémoire, le disque racine et le nombre de processeurs de la VM : 4 processeurs, 4,2 Gio de RAM, 2 Gio de swap, 12 Go de système de fichiers dont 5,2 Go utilisés.*
 
@@ -580,7 +570,6 @@ Dans le Gestionnaire des tâches (onglet Détails), six processus `VirtualBoxVM.
 | `VirtualBoxVM.exe` (PID 12300), VM `client` | 1 110 284 Ko, soit environ 1,06 Gio |
 | Quatre autres processus `VirtualBoxVM.exe` | de 1 084 à 1 204 Ko chacun |
 
-*[Capture : tp2_gestionnaire_taches.png]*
 
 *But : comparer la mémoire configurée, celle vue par la VM et celle réellement consommée sur l'hôte.*
 
@@ -617,7 +606,6 @@ VM "web" has been successfully started.
 "ubuntu-srv2" {deff2e04-b1cf-4010-81b3-e875a5b690c1}
 ```
 
-*[Capture : tp2_nettoyage.png]*
 
 *But : éteindre proprement les deux VM, redémarrer `web` sans fenêtre (mode headless, comme une instance cloud accessible seulement en SSH), la couper brutalement, puis supprimer les deux VM et le réseau. `ubuntu-srv`, image de base des prochains TP, est conservée ; `ubuntu-srv2` n'a pas été touchée.*
 
@@ -645,15 +633,6 @@ VM "web" has been successfully started.
 | 1.9 | `Connection refused` sur le port 2223 | La VM `client` n'était pas encore prête (SSH pas encore démarré) ; la redirection `ssh-client` existait bien | Attendre le démarrage complet, puis relancer `ssh`. Sinon : `sudo systemctl status ssh` puis `sudo systemctl restart ssh` |
 | 2.1 | `Destination Host Unreachable` en pingant `10.10.0.10` (réponse venant de `10.10.0.20`, 100 % de perte) | `web` avait été éteinte avec `poweroff` ; la passerelle répondait toujours, donc le réseau de `client` fonctionnait | Démarrer `web`, attendre ~30 s, vérifier avec `VBoxManage list runningvms` que les deux VM tournent. Les deux VM doivent être allumées pour communiquer |
 
-## Bilan
-
-| Partie | Barème | État |
-|---|---|---|
-| 1. Clones créés, personnalisés, accessibles en SSH | 5 pts | Terminée (durée du clonage de `client` et RAM de `web` à vérifier) |
-| 2. Adressage et connectivité | 4 pts | Terminée |
-| 3. Page web, pare-feu, lien avec le cours | 6 pts | Terminée |
-| 4. Mesures comparées et nettoyage | 3 pts | Terminée |
-| Qualité du compte rendu | 2 pts | Captures à ajouter |
 
 ## Conclusion
 
