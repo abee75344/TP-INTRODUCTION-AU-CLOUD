@@ -46,7 +46,7 @@ TotalSeconds
 VBoxManage clonevm ubuntu-srv --name client --register
 ```
 
-*Durée : **[À COMPLÉTER]***
+*Durée : ** 45,128***
 
 *But : créer la seconde VM de la même façon.*
 
