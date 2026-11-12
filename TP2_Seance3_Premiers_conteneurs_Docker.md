@@ -1,195 +1,256 @@
-# Compte rendu TP2 : Premiers conteneurs avec Docker
+# INTRODUCTION AU CLOUD COMPUTING
+## TP 2 — Premiers conteneurs avec Docker
 
-**Module :** Docker et conteneurisation  
-**Environnement :** Ubuntu sur VirtualBox  
-**Equipe :** - ABE YEPI CHRIST-EMMANUEL
-             - AKELY MAYLINE PHOEBE EDWINA
-             - DANHO AKRE PRINCE PATRICK-JUNIOR
-
-> Chaque manipulation est présentée avec la **commande saisie** (ligne commençant par `etudiant@ubuntusrv:~/api$` ou par `$` quand le dossier n'a pas d'importance) puis le **résultat affiché** dans le terminal.
-
----
-
-# Sommaire et correspondance avec le barème
-
-| Partie | Contenu | Critère du barème | Points |
-|---|---|---|---:|
-| [Partie 0](#partie-0--préparer-la-machine-virtuelle-et-installer-docker) | Machine virtuelle, Docker installé, questions de sécurité | Docker installé, questions de sécurité | 2 |
-| [Partie 1](#partie-1--lancer-et-inspecter-des-conteneurs) | Conteneurs lancés et inspectés, volume | Conteneurs lancés et inspectés, volume compris | 5 |
-| [Partie 2](#partie-2--comparer-un-conteneur-et-une-machine-virtuelle) | Tableau comparatif VM / conteneurs et questions | Mesures comparées et interprétées | 3 |
-| [Partie 3](#partie-3--conteneuriser-lapi-fil-rouge) | Dockerfile, build, cache, tests de l'API | Dockerfile fonctionnel, image construite, cache expliqué | 6 |
-| [Partie 4](#partie-4--publier-limage-et-nettoyer) | Publication sur Docker Hub, nettoyage | Image publiée et vérifiée, nettoyage fait | 2 |
-| Ensemble du document | Clarté, captures, délai | Qualité du compte rendu | 2 |
-| | | **Total** | **20** |
+**Niveau :** Licence 3 Sciences Informatiques  
+**Séance :** 3 — Virtualisation : hyperviseurs, machines virtuelles et conteneurs  
+**Environnement :** Windows 10, Multipass, Ubuntu Server 24.04.5 LTS et Docker  
+**Groupe :** -ABE YEPI CHRIST-EMMANUEL
+              -AKELY MAYLINE PHOEBE EDWINA
+              -DANHO AKRE PRINCE PATRICK-JUNIOR
 
 ---
 
-# Partie 0 : Préparer la machine virtuelle et installer Docker
+# Introduction
 
-## 0.1. Configuration de la machine virtuelle
+Le but de ce TP est de découvrir Docker et de comprendre le fonctionnement des conteneurs. Il s'agit d'installer Docker dans une machine virtuelle Ubuntu, de lancer et d'inspecter des conteneurs, de comparer les conteneurs avec une machine virtuelle, puis de créer une image Docker pour une API Python Flask et de la publier sur Docker Hub.
 
-Pour ce TP, nous avons travaillé sur la VM `Ubuntu_serveur`, qui tourne sous Ubuntu 26.04.1 LTS.
+Contrairement à une machine virtuelle qui possède son propre système d'exploitation complet, un conteneur partage le noyau Linux de la machine hôte. Cela permet de lancer des applications de manière plus légère et plus rapide.
 
-| Élément | Valeur |
+**Adaptation de l'environnement :** le sujet propose d'utiliser VirtualBox. Pour ce TP, nous avons utilisé Multipass sous Windows. La machine virtuelle `ubuntu-srv` a donc été conservée, mais les commandes de démarrage et l'accès réseau ont été adaptés à Multipass.
+
+# Présentation de l'environnement
+
+| Élément | Configuration |
 |---|---|
-| Nom de la VM | `Ubuntu_serveur` |
-| Nom d'hôte | `ubuntusrv` |
-| Utilisateur | `etudiant` |
-| Système d'exploitation | Ubuntu 26.04.1 LTS |
-| Version de Docker | 29.1.3 |
-| Version du noyau Linux | 7.0.0-38-generic |
+| Système hôte | Windows 10 |
+| Outil de virtualisation | Multipass |
+| Machine virtuelle principale | ubuntu-srv |
+| Système de la VM | Ubuntu 24.04.5 LTS |
+| Processeur virtuel | 2 CPU |
+| Mémoire RAM | Environ 1,9 Gio |
+| Disque de la VM | 20 Go configurés |
+| Partition principale (`/`) | 19 Go |
+| Docker | 29.1.3 |
+| Pilote de stockage | overlayfs |
+| Gestionnaire de cgroups | systemd |
+| Version des cgroups | v2 |
+| Noyau Linux | 6.8.0-147-generic |
 
-On se connecte à la VM en SSH : le port 2222 de la machine hôte est redirigé vers le port 22 de la VM.
+La machine virtuelle principale possède l'adresse IP `10.97.0.65`.
 
-**Commandes saisies depuis PowerShell :**
+Une deuxième machine virtuelle appelée `web` existe également dans Multipass, avec l'adresse IP `10.97.0.162`. Elle est distincte du conteneur Nginx nommé `web`, utilisé dans ce TP.
+
+---
+
+# PARTIE 0 — Préparer la VM et installer Docker
+
+## 0.1. Démarrage de la machine virtuelle
+
+La machine virtuelle `ubuntu-srv` a été démarrée avec Multipass au lieu de VirtualBox.
+
+Commande utilisée dans PowerShell :
 
 ```powershell
-$env:Path += ";C:\Program Files\Oracle\VirtualBox"
-VBoxManage startvm "Ubuntu_serveur" --type headless
-VBoxManage controlvm "Ubuntu_serveur" natpf1 "ssh,tcp,127.0.0.1,2222,,22"
-VBoxManage controlvm "Ubuntu_serveur" natpf1 "web,tcp,127.0.0.1,8080,,8080"
-VBoxManage controlvm "Ubuntu_serveur" natpf1 "api,tcp,127.0.0.1,5000,,5000"
-ssh -p 2222 etudiant@127.0.0.1
+multipass list
+multipass shell ubuntu-srv
 ```
 
-Ces commandes démarrent la VM sans interface graphique, créent trois redirections de ports (SSH sur 2222, web sur 8080, API sur 5000), puis ouvrent la connexion SSH.
+La première commande permet de vérifier les machines virtuelles disponibles et leur état. La deuxième permet d'ouvrir un terminal dans la machine `ubuntu-srv`.
 
-## 0.2. Questions
+## 0.2. Mise à jour des paquets
 
-### Q1. Quelle version de Docker est installée ? Quel noyau utilise-t-il ?
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker version
-Client:
- Version:           29.1.3
- API version:       1.52
- Go version:        go1.24.13
- Git commit:        29.1.3-0ubuntu4.1
- Built:             Wed Apr 29 16:40:20 2026
- OS/Arch:           linux/amd64
- Context:           default
-
-Server:
- Engine:
-  Version:          29.1.3
-  API version:      1.52 (minimum version 1.44)
-  Go version:       go1.24.13
-  Git commit:       29.1.3-0ubuntu4.1
-  Built:            Wed Apr 29 16:40:20 2026
-  OS/Arch:          linux/amd64
-  Experimental:     false
- containerd:
-  Version:          2.2.2
-  GitCommit:
- runc:
-  Version:          1.4.0-0ubuntu1
-  GitCommit:
- docker-init:
-  Version:          0.19.0
-  GitCommit:
-```
-
-Le client et le serveur (le démon Docker) sont tous les deux en version **29.1.3**, installés depuis les paquets Ubuntu (`29.1.3-0ubuntu4.1`). Docker s'appuie sur `containerd` 2.2.2 et `runc` 1.4.0 pour lancer réellement les conteneurs.
-
-**Réponse :**
-
-- Version de Docker : **29.1.3**
-- Noyau (ligne *Kernel Version*) : **7.0.0-38-generic**
-
-Docker n'a pas de noyau propre : il utilise celui de la VM.
-
-### Q2. Pourquoi être membre du groupe `docker` revient-il presque à être administrateur ? Quelle précaution prendre sur un serveur partagé ?
-
-**Pourquoi.** Le démon Docker (`dockerd`) tourne en **root**. Le groupe `docker` donne accès à sa socket (`/var/run/docker.sock`), donc le droit de lui envoyer n'importe quelle commande, sans `sudo` ni mot de passe. Un simple membre du groupe peut par exemple lancer un conteneur qui monte tout le système de fichiers de l'hôte :
+Commande exécutée dans Ubuntu :
 
 ```bash
-docker run -it --rm -v /:/hote alpine chroot /hote sh
+sudo apt update
 ```
 
-Il obtient alors un shell root sur l'hôte : il peut lire `/etc/shadow`, modifier `/etc/sudoers` ou ajouter une clé SSH. Les options `--privileged` ou `--pid=host` donnent des possibilités équivalentes. Il n'y a donc pas de vraie séparation des privilèges : être dans le groupe `docker`, c'est être root.
+Cette commande permet de mettre à jour la liste des paquets disponibles dans les dépôts Ubuntu.
 
-**Précautions sur un serveur partagé :**
+**Résultat :** la mise à jour s'est terminée correctement. Environ 38,2 Mo de données ont été téléchargés en 30 secondes.
 
-- ne mettre dans le groupe `docker` que des administrateurs de confiance, comme on le ferait pour `sudo` ;
-- proposer aux autres utilisateurs un mode **rootless** (Docker rootless ou Podman) ou activer `userns-remap`, pour que root dans le conteneur ne soit pas root sur l'hôte ;
-- ne pas exposer la socket Docker sur le réseau sans TLS et ne pas la monter dans un conteneur ;
-- vérifier régulièrement qui fait partie du groupe avec `getent group docker`.
+## 0.3. Installation de Docker
+
+Commande utilisée :
+
+```bash
+sudo apt install -y docker.io docker-buildx docker-compose-v2
+```
+
+Cette commande installe Docker Engine ainsi que les outils Buildx et Docker Compose.
+
+Les paquets ont été installés correctement.
+
+Versions relevées :
+- Docker Engine : `29.1.3-0ubuntu3~24.04.2`
+- Docker Buildx : `0.30.1`
+- Docker Compose : `2.40.3`
+
+## 0.4. Autorisation de l'utilisateur à utiliser Docker
+
+Commande exécutée :
+
+```bash
+sudo usermod -aG docker ubuntu
+newgrp docker
+```
+
+La première commande ajoute l'utilisateur `ubuntu` au groupe `docker`. La deuxième permet de prendre en compte ce groupe dans le terminal actuel.
+
+Vérification :
+
+```bash
+docker version
+```
+
+La commande a fonctionné sans utiliser `sudo`. Le client et le serveur Docker affichent la version `29.1.3`.
+
+## 0.5. Vérification de la configuration Docker
+
+Commande utilisée :
+
+```bash
+docker info | grep -E "Server Version|Storage Driver|Cgroup|Kernel Version"
+```
+
+Résultat obtenu :
+
+```text
+Server Version: 29.1.3
+Storage Driver: overlayfs
+Cgroup Driver: systemd
+Cgroup Version: 2
+Kernel Version: 6.8.0-147-generic
+```
+
+### Réponses aux questions
+
+**Q1. Quelle version de Docker est installée ? Quel noyau Docker utilise-t-il ?**
+
+La version installée est Docker `29.1.3`. Docker utilise le noyau Linux `6.8.0-147-generic`.
+
+**Q2. Être membre du groupe docker revient presque à être administrateur de la machine. Pourquoi ? Quelle précaution cela impose-t-il sur un serveur partagé ?**
+
+Un utilisateur membre du groupe `docker` peut lancer des conteneurs et accéder à certaines ressources de la machine hôte. Il peut notamment monter des répertoires de l'hôte dans un conteneur et accéder ainsi à des fichiers importants.
+
+Cela peut lui permettre d'obtenir des privilèges très élevés sur la machine. Sur un serveur partagé, il faut donc limiter l'accès au groupe `docker` aux personnes de confiance.
 
 ---
 
-# Partie 1 : Lancer et inspecter des conteneurs
+# PARTIE 1 — Lancer et inspecter des conteneurs
 
-## 1.1. Fonctionnement de Docker avec `hello-world`
+## 1.1. Premier conteneur : hello-world
 
-**Commandes saisies :**
+Commande exécutée :
 
 ```bash
 docker run hello-world
+```
+
+Cette commande télécharge et exécute l'image officielle `hello-world` si elle n'est pas déjà disponible localement.
+
+**Résultat obtenu :**
+
+Le message suivant a été affiché :
+
+```text
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+```
+
+Docker a donc réussi à télécharger l'image, à créer le conteneur, à l'exécuter et à afficher son message.
+
+Vérification des images :
+
+```bash
 docker images
+```
+
+L'image `hello-world` apparaît avec une taille d'environ `25.9 kB`.
+
+Vérification des conteneurs :
+
+```bash
 docker ps -a
 ```
 
-`docker run hello-world` télécharge l'image si besoin, crée un conteneur, affiche un message de confirmation puis s'arrête. `docker images` montre l'image `hello-world` en local et `docker ps -a` montre le conteneur terminé.
+Le conteneur `hello-world` apparaît avec l'état `Exited (0)`. Cela signifie qu'il a terminé son exécution normalement.
 
-Le message affiché explique les quatre étapes réalisées par Docker :
+## 1.2. Lancement d'un serveur web Nginx
 
-1. Le client Docker contacte le démon Docker.
-2. Le démon télécharge l'image `hello-world` depuis le Docker Hub.
-3. Le démon crée un nouveau conteneur à partir de cette image et exécute le programme qui produit le message.
-4. Le démon renvoie la sortie au client Docker, qui l'affiche dans le terminal.
-
-Cet exemple montre la différence entre une image, qui sert de modèle, et un conteneur, qui est une instance créée à partir de cette image.
-
-## 1.2. Serveur web Nginx et comparaison avec la VM
-
-**Commandes saisies :**
+Commande utilisée :
 
 ```bash
 docker run -d --name web -p 8080:80 nginx
-docker ps
-curl -s http://localhost:8080 | head -n 5
 ```
 
-Le conteneur `web` tourne en arrière-plan et son port 80 est publié sur le port 8080 de la VM. Le `curl` récupère la page d'accueil de Nginx.
+Explication :
+- `docker run` crée et lance un conteneur.
+- `-d` lance le conteneur en arrière-plan.
+- `--name web` donne le nom `web` au conteneur.
+- `-p 8080:80` associe le port 8080 de la VM au port 80 du conteneur.
+- `nginx` indique l'image utilisée.
 
-**Comparaison des systèmes, commandes saisies :**
+Vérification :
 
 ```bash
-docker exec web cat /etc/os-release | head -n 2
-cat /etc/os-release | head -n 2
+docker ps
+```
+
+Le conteneur `web` apparaît comme actif (`Up`) avec la redirection :
+
+```text
+0.0.0.0:8080->80/tcp
+```
+
+Test de la page :
+
+```bash
+curl http://localhost:8080
+```
+
+Résultat : la page d'accueil par défaut de Nginx s'affiche avec le message :
+
+```html
+<h1>Welcome to nginx!</h1>
+```
+
+## 1.3. Inspection du système d'exploitation
+
+Pour connaître le système vu depuis le conteneur :
+
+```bash
+docker exec web cat /etc/os-release
+```
+
+Le conteneur utilise Debian GNU/Linux 13.7.
+
+Pour connaître le système de la VM :
+
+```bash
+cat /etc/os-release
+```
+
+La machine virtuelle utilise Ubuntu 24.04.5 LTS.
+
+Vérification du noyau :
+
+```bash
 docker exec web uname -r
 uname -r
 ```
 
-**Résultats observés sur la VM :**
+Dans les deux cas, le noyau affiché est :
 
-```console
-$ cat /etc/os-release | head -n 2
-PRETTY_NAME="Ubuntu 26.04.1 LTS"
-NAME="Ubuntu"
-$ uname -r
-7.0.0-38-generic
+```text
+6.8.0-147-generic
 ```
 
-**Résultats observés dans le conteneur :**
+Le conteneur utilise donc une distribution différente de celle de la VM, mais partage le même noyau Linux.
 
-```console
-etudiant@ubuntusrv:~/api$ docker run -d --name web -p 8080:80 nginx
-63eac01a44ae01122282f3f6bd2a3b2ddc562322d3ea56028ea8be7c82e3d262
-etudiant@ubuntusrv:~/api$ docker exec web cat /etc/os-release | head -n 2
-PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
-NAME="Debian GNU/Linux"
-$ docker exec web uname -r
-7.0.0-38-generic
-```
+## 1.4. Observation des journaux, processus et ressources
 
-La VM tourne sous Ubuntu 26.04.1 LTS, alors que le conteneur Nginx tourne sous **Debian GNU/Linux 13 (trixie)** : il a son propre système de fichiers et sa propre distribution. En revanche, les deux affichent exactement le même noyau, `7.0.0-38-generic` : le conteneur partage le noyau de la VM. Un conteneur n'est donc pas une machine virtuelle complète.
-
-## 1.3. Journaux, processus et consommation
-
-**Commandes saisies :**
+Commandes utilisées :
 
 ```bash
 docker logs --tail 5 web
@@ -198,465 +259,340 @@ ps aux | grep "nginx: master" | grep -v grep
 docker stats --no-stream web
 ```
 
-**Résultat de `docker logs --tail 5 web` (extrait) :**
+Ces commandes permettent respectivement :
+- d'afficher les dernières lignes des journaux ;
+- de voir les processus exécutés dans le conteneur ;
+- de rechercher le processus principal Nginx depuis la VM ;
+- d'observer la consommation de ressources du conteneur.
 
-```console
-2026/10/20 11:26:21 [notice] 1#1: start worker process 30
-172.17.0.1 - - [20/Oct/2026:11:28:54 +0000] "GET / HTTP/1.1" 200 896 "-" "curl/8.18.0" "-"
-10.0.2.2 - - [20/Oct/2026:11:29:54 +0000] "GET / HTTP/1.1" 200 896 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...
-```
+Résultats observés :
+- Nginx possède un processus principal (`master`) et deux processus secondaires (`worker`).
+- La consommation mémoire observée était d'environ `3.402 MiB`.
+- Le conteneur utilisait environ `0 %` du processeur lors de la mesure.
+- Le nombre de processus affiché était de `3`.
 
-On y voit le démarrage des processus de travail de Nginx, la requête faite avec `curl` depuis la VM (adresse `172.17.0.1`) et celle faite depuis le navigateur Windows de l'hôte (adresse `10.0.2.2`, celle que voit la VM à travers la redirection VirtualBox).
+## 1.5. Modification de la page d'accueil dans le conteneur
 
-**Résultat de `docker top web` :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker top web
-UID      PID     PPID    C    STIME   TTY   TIME       CMD
-root     11010   10987   0    09:11   ?     00:00:00   nginx: master process nginx -g daemon off;
-syslog   11081   11010   0    09:11   ?     00:00:00   nginx: worker process
-syslog   11082   11010   0    09:11   ?     00:00:00   nginx: worker process
-```
-
-La commande affiche les processus du conteneur tels que l'hôte les voit : un processus maître (PID 11010) lancé par `root`, et deux processus de travail (PID 11081 et 11082) qui en dépendent (PPID 11010). Ces processus ont de vrais numéros de PID dans la VM. Les processus de travail apparaissent sous le nom `syslog` parce que leur numéro d'utilisateur correspond, côté VM, à cet utilisateur.
-
-**Mesure de la consommation, commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker stats --no-stream web
-CONTAINER ID   NAME   CPU %     MEM USAGE / LIMIT     MEM %     NET I/O         BLOCK I/O     PIDS
-63eac01a44ae   web    0.00%     3.375MiB / 7.251GiB   0.05%     1.08kB / 126B   0B / 24.6kB   3
-```
-
-Le conteneur Nginx `web` utilise 3.375 MiB de mémoire (0.05 %), pour 3 processus : cela correspond exactement aux trois processus vus avec `docker top`.
-
-**Recherche du processus dans la liste de la VM.** Notre première tentative a échoué, car nous avions oublié le mot `grep` avant le motif :
-
-```console
-etudiant@ubuntusrv:~/api$ ps aux | "nginx: master" | grep -v grep
-nginx: master: command not found
-```
-
-Notre deuxième tentative ne renvoie aucune ligne, car nous avons écrit `masteur` au lieu de `master`, donc aucun processus ne correspond au motif :
-
-```console
-etudiant@ubuntusrv:~/api$ ps aux | grep "nginx: masteur" | grep -v grep
-etudiant@ubuntusrv:~/api$
-```
-
-Entre-temps, nous avons supprimé les deux conteneurs de mesure. **Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker rm -f web alpine-mesure
-web
-alpine-mesure
-```
-
-Les deux conteneurs (`web` et `alpine-mesure`) sont supprimés. Comme le conteneur `web` n'existait plus, nous l'avons relancé avant de refaire la recherche, cette fois avec la bonne commande :
-
-```console
-etudiant@ubuntusrv:~/api$ docker run -d --name web -p 8080:80 nginx
-7d1c58663d50a73cf4a12e29c5c11b3a9e318ace64842482555c6165fb8b019b
-etudiant@ubuntusrv:~/api$ ps aux | grep "nginx: master" | grep -v grep
-root       11346  0.3  0.1  14976  9020 ?        Ss   09:46   0:00 nginx: master process nginx -g daemon off;
-```
-
-Cette fois, le processus maître de Nginx apparaît **directement dans la liste des processus de la VM** : il a le PID 11346 et appartient à `root`. Le conteneur est un processus comme un autre pour la VM.
-
-Les processus du conteneur sont visibles depuis la VM : un conteneur est un simple processus de l'hôte, isolé par des mécanismes du noyau Linux (*namespaces* et *cgroups*), et non une machine virtuelle avec son propre noyau.
-
-## 1.4. Trajet d'une requête HTTP vers Nginx
-
-Quand le navigateur de la machine hôte ouvre `http://127.0.0.1:8080`, la requête passe par trois étapes :
-
-1. Le navigateur s'adresse au port 8080 de la machine hôte.
-2. VirtualBox redirige ce port vers le port 8080 de la VM.
-3. Docker redirige le port 8080 de la VM vers le port 80 du conteneur `web`, grâce à l'option `-p 8080:80` du `docker run`.
-
-## 1.5. Éphémérité des données et persistance avec un volume
-
-**Commandes saisies, première partie : modifier la page dans le conteneur, puis le supprimer.**
+Commande utilisée :
 
 ```bash
-docker exec web sh -c 'echo "<h1>Binôme TP2</h1>" > /usr/share/nginx/html/index.html'
-curl -s http://localhost:8080
-docker rm -f web
-docker run -d --name web -p 8080:80 nginx
-curl -s http://localhost:8080 | grep -o "<title>.*</title>"
+docker exec web sh -c 'echo "<h1>Bienvenue sur mon serveur Docker !</h1>" > /usr/share/nginx/html/index.html'
 ```
 
-Après la modification, le `curl` renvoie notre page personnalisée. Mais après `docker rm -f web` et un nouveau `docker run`, la page modifiée a disparu et c'est la page d'accueil par défaut de Nginx qui est servie. L'espace d'écriture d'un conteneur est éphémère : il est lié à son cycle de vie.
+Cette commande remplace le contenu de la page d'accueil directement dans le conteneur.
 
-**Commandes saisies, deuxième partie : monter un dossier de la VM avec `-v`.**
+Vérification :
+
+```bash
+curl http://localhost:8080
+```
+
+Résultat obtenu :
+
+```html
+<h1>Bienvenue sur mon serveur Docker !</h1>
+```
+
+Ensuite, le conteneur a été supprimé :
+
+```bash
+docker rm -f web
+```
+
+Puis recréé à partir de la même image :
+
+```bash
+docker run -d --name web -p 8080:80 nginx
+```
+
+Nouvelle vérification :
+
+```bash
+curl http://localhost:8080
+```
+
+La page d'accueil originale de Nginx est réapparue.
+
+Cette expérience montre que les modifications effectuées directement dans la couche du conteneur disparaissent lorsqu'on supprime celui-ci.
+
+## 1.6. Utilisation d'un volume
+
+Création du répertoire sur la VM :
 
 ```bash
 mkdir -p ~/site
-echo "<h1>Page servie depuis un volume</h1>" > ~/site/index.html
-docker rm -f web
-docker run -d --name web -p 8080:80 -v ~/site:/usr/share/nginx/html:ro nginx
-curl -s http://localhost:8080
 ```
 
-L'option `-v` monte le dossier `~/site` de la VM à la place du dossier de contenu de Nginx (en lecture seule avec `:ro`). Les données restent stockées en dehors du conteneur, donc elles survivent à sa suppression.
+Création de la page HTML dans ce répertoire :
 
-## 1.6. Bilan de la partie
+```bash
+echo '<h1>Mon site Docker avec un volume persistant !</h1>' > ~/site/index.html
+```
 
-Cette partie nous a permis de découvrir les images et les conteneurs, de comprendre que le noyau est partagé, d'observer les processus de l'hôte, et de voir comment fonctionnent la publication des ports et la persistance des données.
+L'option `-v` permet de monter le répertoire de la VM dans le conteneur.
+
+Commande utilisée :
+
+```bash
+docker rm -f web
+docker run -d --name web -p 8080:80 -v ~/site:/usr/share/nginx/html:ro nginx
+```
+
+Vérification :
+
+```bash
+curl http://localhost:8080
+```
+
+Résultat obtenu :
+
+```html
+<h1>Mon site Docker avec un volume persistant !</h1>
+```
+
+Le fichier reste stocké dans la VM. Il n'est donc pas supprimé avec le conteneur.
+
+L'option `:ro` signifie que le montage est en lecture seule depuis le conteneur.
+
+### Réponses aux questions
+
+**Q1. D'après le message de hello-world, quelles sont les quatre étapes réalisées par Docker ?**
+
+Les quatre étapes principales sont :
+1. Docker recherche l'image nécessaire localement ou la télécharge depuis un registre.
+2. Docker crée un conteneur à partir de cette image.
+3. Docker exécute le conteneur.
+4. Le conteneur affiche son message dans le terminal.
+
+**Q2. Le conteneur web et la VM ont-ils la même distribution ? Le même noyau ?**
+
+Non, ils n'ont pas la même distribution :
+- la VM utilise Ubuntu 24.04.5 LTS ;
+- le conteneur utilise Debian GNU/Linux 13.7.
+
+Cependant, ils utilisent le même noyau Linux `6.8.0-147-generic`. Cela s'explique par le fait que les conteneurs partagent le noyau de la machine hôte.
+
+**Q3. Les processus Nginx du conteneur apparaissent-ils dans ps aux sur la VM ? Qu'est-ce que cela montre ?**
+
+Oui, les processus Nginx apparaissent dans la liste des processus de la VM.
+
+Cela montre qu'un conteneur n'est pas une machine virtuelle indépendante avec son propre noyau. Ses processus sont exécutés sur le noyau Linux de la machine hôte, tout en étant isolés dans leur environnement.
+
+**Q4. Retracez le chemin d'une requête du navigateur de l'hôte jusqu'à Nginx.**
+
+Avec l'environnement Multipass utilisé, le chemin est :
+
+```text
+Navigateur Windows
+       |
+       v
+Adresse de la VM : 10.97.0.65:8080
+       |
+       v
+Port 8080 de la VM Ubuntu
+       |
+       v
+Port 80 du conteneur Nginx
+       |
+       v
+Page HTML retournée
+```
+
+La redirection Docker est réalisée avec `-p 8080:80`.
+
+Contrairement au sujet initial, qui prévoit une redirection VirtualBox, l'accès a été effectué avec l'adresse IP de la VM Multipass.
+
+**Q5. Pourquoi la page modifiée a-t-elle disparu après docker rm ? Que change l'option -v ?**
+
+La modification a disparu parce qu'elle avait été faite directement dans le système de fichiers du conteneur. Lorsqu'on supprime le conteneur, cette modification est supprimée avec lui.
+
+L'option `-v` permet de monter un répertoire de la VM dans le conteneur. Le fichier reste alors stocké sur la VM et peut être réutilisé même si le conteneur est supprimé et recréé.
 
 ---
 
-# Partie 2 : Comparer un conteneur et une machine virtuelle
+# PARTIE 2 — Comparer conteneur et VM
 
-## 2.1. Mesures sur la VM Ubuntu
+## 2.1. Téléchargement de l'image Alpine
 
-### Temps de démarrage
+Commande utilisée :
 
-**Commande saisie :**
+```bash
+docker pull alpine
+```
+
+L'image Alpine a été téléchargée correctement.
+
+Vérification :
+
+```bash
+docker images
+```
+
+Tailles observées :
+- Alpine : `13 MB`
+- Nginx : `243 MB`
+- hello-world : `25.9 kB`
+
+## 2.2. Mesure du temps de démarrage d'Alpine
+
+Le sujet demande d'exécuter deux fois la commande `time` et de conserver la deuxième mesure.
+
+Première exécution :
+
+```bash
+time docker run --rm alpine echo "Bonjour depuis Alpine"
+```
+
+Résultat :
+
+```text
+real    0m0.730s
+```
+
+Deuxième exécution :
+
+```bash
+time docker run --rm alpine echo "Bonjour depuis Alpine"
+```
+
+Résultat :
+
+```text
+real    0m0.654s
+```
+
+La mesure conservée est donc :
+
+**0,654 seconde.**
+
+La commande `time` permet de mesurer le temps nécessaire à l'exécution d'une commande :
+- `real` : temps réellement écoulé ;
+- `user` : temps processeur utilisé en mode utilisateur ;
+- `sys` : temps processeur utilisé par le système.
+
+## 2.3. Mesure du démarrage de la VM
+
+Commande utilisée :
 
 ```bash
 systemd-analyze
 ```
 
-**Résultat :**
+Résultat obtenu :
 
-```console
-graphical.target reached after 18.263s in userspace.
+```text
+Startup finished in 103ms (firmware)
++ 1.056s (loader)
++ 3.065s (kernel)
++ 7min 4.903s (userspace)
+= 7min 9.128s
+graphical.target reached after 1min 1.973s in userspace
 ```
 
-| Mesure | Valeur |
-|---|---:|
-| Démarrage du noyau | 6.047 s |
-| Initialisation de l'initrd | 10.661 s |
-| Espace utilisateur (*userspace*) | 18.265 s |
-| Temps total de démarrage | 34.973 s |
-| Cible graphique atteinte après | 18.263 s dans l'espace utilisateur |
+Le temps total affiché est de `7 minutes et 9,128 secondes`.
 
-### Mémoire
+Cette mesure concerne le démarrage de la machine virtuelle et non celui d'un conteneur.
 
-**Commande saisie et résultat :**
+## 2.4. Mesure de la mémoire
 
-```console
-etudiant@ubuntusrv:~/api$ free -h
+Commande utilisée :
+
+```bash
+free -h
+```
+
+Résultat obtenu :
+
+```text
                total        used        free      shared  buff/cache   available
-Mem:           7,3Gi       627Mi       5,3Gi       1,1Mi       1,6Gi       6,6Gi
+Mem:           1.9Gi       442Mi       262Mi       992Ki       1.3Gi       1.4Gi
 Swap:             0B          0B          0B
 ```
 
-| Mesure mémoire | Valeur |
-|---|---:|
-| Mémoire totale | 7.3 Gi |
-| Mémoire utilisée | 627 Mi |
-| Mémoire libre | 5.3 Gi |
-| Mémoire partagée | 1.1 Mi |
-| Buffers/cache | 1.6 Gi |
-| Mémoire disponible | 6.6 Gi |
-| Swap total | 0 B |
-| Swap utilisé | 0 B |
-| Swap libre | 0 B |
+La VM dispose d'environ :
+- 1,9 Gio de mémoire totale ;
+- 442 Mio de mémoire utilisée ;
+- 262 Mio de mémoire libre ;
+- 1,3 Gio de mémoire utilisée par les caches et les buffers ;
+- 1,4 Gio de mémoire disponible.
 
-### Espace disque de la VM
+## 2.5. Vérification du système Alpine
 
-**Commande saisie et résultat :**
+Commande utilisée :
 
-```console
-etudiant@ubuntusrv:~/api$ df -h
-Filesystem                         Size  Used Avail Use% Mounted on
-tmpfs                              1,5G  1,2M  1,5G   1% /run
-/dev/mapper/ubuntu--vg-ubuntu--lv   19G  3,9G   14G  23% /
-tmpfs                              3,7G     0  3,7G   0% /dev/shm
-tmpfs                              3,7G     0  3,7G   0% /tmp
-none                               1,0M     0  1,0M   0% /run/credentials/systemd-journald.service
-none                               1,0M     0  1,0M   0% /run/credentials/systemd-resolved.service
-/dev/sda2                          2,0G  100M  1,7G   6% /boot
-none                               1,0M     0  1,0M   0% /run/credentials/systemd-networkd.service
-tmpfs                              743M  8,0K  743M   1% /run/user/1000
-none                               1,0M     0  1,0M   0% /run/credentials/getty@tty6.service
-none                               1,0M     0  1,0M   0% /run/credentials/getty@tty1.service
+```bash
+docker run --rm alpine cat /etc/os-release
 ```
 
-Le système de fichiers principal (`/`) fait 19 Go, dont 3,9 Go utilisés (23 %). La partition `/boot` fait 2,0 Go avec 100 Mo utilisés (6 %).
+Résultat obtenu :
 
-### Taille du dossier de la VM
-
-**Commande saisie depuis PowerShell (sur la machine hôte) et résultat :**
-
-```console
-PS C:\Users\HP> "{0:N2} Go" -f ((Get-ChildItem "$env:USERPROFILE\VirtualBox VMs\Ubuntu_serveur" -Recurse | Measure-Object Length -Sum).Sum / 1GB)
-7,56 Go
-```
-
-Le dossier de la VM `Ubuntu_serveur` occupe **7,56 Go** sur le disque de la machine hôte.
-
-## 2.2. Mesure de l'image Alpine
-
-**Téléchargement, commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker pull alpine
-Using default tag: latest
-latest: Pulling from library/alpine
-Digest: sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2a0614c35
-Status: Image is up to date for alpine:latest
-docker.io/library/alpine:latest
-```
-
-Docker indique que l'image est déjà à jour : elle était déjà présente en local, donc rien n'a été retéléchargé.
-
-**Une erreur de frappe, puis la bonne commande :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker image alpine
-docker: unknown command: docker image alpine
-
-Usage:  docker image
-
-Run 'docker image --help' for more information
-etudiant@ubuntusrv:~/api$ docker images alpine
-
-IMAGE           ID             DISK USAGE   CONTENT SIZE   EXTRA
-alpine:latest   71e9b7bae160           13MB         3.94MB
-```
-
-| Élément | Valeur |
-|---|---|
-| Image | `alpine:latest` |
-| ID de l'image | `71e9b7bae160` |
-| Taille sur disque (*DISK USAGE*) | 13 MB |
-| Taille du contenu (*CONTENT SIZE*) | 3.94 MB |
-
-### Système de l'image Alpine
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker run --rm alpine cat /etc/os-release
+```text
 NAME="Alpine Linux"
 ID=alpine
-VERSION_ID=3.24.3
+VERSION_ID=3.24.4
 PRETTY_NAME="Alpine Linux v3.24"
 HOME_URL="https://alpinelinux.org/"
 BUG_REPORT_URL="https://gitlab.alpinelinux.org/alpine/aports/-/issues"
 ```
 
-Le conteneur tourne bien sous **Alpine Linux v3.24** (version 3.24.3), alors que la VM est sous Ubuntu 26.04.1 LTS : le conteneur a sa propre distribution mais, comme on l'a vu, il partage le noyau de la VM.
+## 2.6. Tableau comparatif
 
-### Mémoire d'un conteneur Alpine
-
-Pour mesurer la mémoire d'Alpine, il faut un conteneur qui reste en vie quelques instants. Nous avons lancé `sleep 300` (une pause de 5 minutes). Notre première tentative a échoué, car nous avions oublié le mot `run` :
-
-```console
-etudiant@ubuntusrv:~/api$ docker -d --name alpine-mesure alpine sleep 300
-unknown shorthand flag: 'd' in -d
-
-Usage:  docker [OPTIONS] COMMAND [ARG...]
-
-Run 'docker --help' for more information
-```
-
-**Commande correcte et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker run -d --name alpine-mesure alpine sleep 300
-b9239000ba145f87f4da57b11344f0aadc7bf4047109711073f8cbe153458322
-etudiant@ubuntusrv:~/api$ docker stats --no-stream alpine-mesure
-CONTAINER ID   NAME            CPU %     MEM USAGE / LIMIT   MEM %     NET I/O       BLOCK I/O   PIDS
-b9239000ba14   alpine-mesure   0.00%     352KiB / 7.251GiB   0.00%     726B / 126B   0B / 0B     1
-```
-
-| Mesure | Valeur observée |
-|---|---:|
-| CPU | 0.00 % |
-| Mémoire utilisée | 352 KiB |
-| Limite mémoire affichée | 7.251 GiB |
-| Pourcentage mémoire | 0.00 % |
-| Réseau reçu / envoyé | 726 B / 126 B |
-| Entrées-sorties disque | 0 B / 0 B |
-| Nombre de processus | 1 |
-
-Un conteneur Alpine qui fait une simple pause n'utilise que **352 KiB** de mémoire, avec un seul processus.
-
-Alpine est très compacte quand on la compare à une distribution complète installée dans une VM.
-
-## 2.3. Temps d'exécution d'Alpine
-
-**Commande saisie** (lancée deux fois) :
-
-```bash
-time docker run --rm alpine echo "Bonjour depuis un conteneur"
-```
-
-**Résultat des deux essais :**
-
-```console
-Bonjour depuis un conteneur
-```
-
-suivi des temps mesurés :
-
-| Mesure | Premier essai | Deuxième essai |
-|---|---:|---:|
-| `real` | 0m2,290s | 0m1,962s |
-| `user` | 0m0,010s | 0m0,039s |
-| `sys` | 0m0,075s | 0m0,081s |
-
-`real` est le temps total écoulé. `user` et `sys` sont les temps CPU passés respectivement en espace utilisateur et dans le noyau.
-
-## 2.4. Image et conteneur Nginx
-
-### Première tentative : une erreur de commande
-
-Nous avons d'abord tapé `docker image nginx`, qui a produit une erreur : la commande `docker image` attend une sous-commande (par exemple `ls` ou `inspect`).
-
-```console
-etudiant@ubuntusrv:~/api$ docker image nginx
-docker: unknown command: docker image nginx
-
-Usage:  docker image
-
-Run 'docker image --help' for more information
-```
-
-### Téléchargement de l'image
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker pull nginx
-Using default tag: latest
-latest: Pulling from library/nginx
-8334177aa35b: Pull complete
-d5f3a4724daf: Pull complete
-dd00b11a22aa: Pull complete
-9a2c3eb3312e: Pull complete
-24bf03b6a474: Pull complete
-a856bfc2a772: Pull complete
-ee284e8d8c11: Download complete
-6542b5f86ffd: Download complete
-Digest: sha256:4c41e2d0a3a55b325ed572cd0200bdb72af1433c3daa2bca6ef8eea68ce504a2
-Status: Downloaded newer image for nginx:latest
-docker.io/library/nginx:latest
-```
-
-### Taille de l'image
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker images nginx
-
-IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
-nginx:latest   4c41e2d0a3a5        243MB         66.8MB
-```
-
-| Élément | Valeur |
-|---|---|
-| Image | `nginx:latest` |
-| ID de l'image | `4c41e2d0a3a5` |
-| Taille sur disque (*DISK USAGE*) | 243 MB |
-| Taille du contenu (*CONTENT SIZE*) | 66.8 MB |
-
-### Lancement du conteneur
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker run -d --name nginx-mesure -p 8080:80 nginx
-e136a7f19a048f4ce46e19cfc848557eaa7b2409bcea10edea9292b1ad35ba38
-```
-
-### Consommation de ressources
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker stats --no-stream nginx-mesure
-CONTAINER ID   NAME           CPU %     MEM USAGE / LIMIT     MEM %     NET I/O       BLOCK I/O     PIDS
-e136a7f19a04   nginx-mesure   0.00%     3.504MiB / 7.251GiB   0.05%     946B / 126B   0B / 24.6kB   3
-```
-
-| Mesure | Valeur observée |
-|---|---:|
-| CPU | 0.00 % |
-| Mémoire utilisée | 3.504 MiB |
-| Limite mémoire affichée | 7.251 GiB |
-| Pourcentage mémoire | 0.05 % |
-| Réseau reçu | 946 B |
-| Réseau envoyé | 126 B |
-| Entrées-sorties disque | 0 B / 24.6 kB |
-| Nombre de processus | 3 |
-
-### Suppression du conteneur
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker rm -f nginx-mesure
-nginx-mesure
-```
-
-### Système de l'image Nginx
-
-Le résultat de `docker exec web cat /etc/os-release | head -n 2` (voir la partie 1.2) montre que l'image Nginx est basée sur **Debian GNU/Linux 13 (trixie)**.
-
-## 2.5. Tableau comparatif
-
-| Mesure | VM Ubuntu | Conteneur/image Alpine | Conteneur/image Nginx |
+| Mesure | VM ubuntu-srv | Conteneur nginx | Conteneur alpine |
 |---|---|---|---|
-| Système | Ubuntu 26.04.1 LTS | Alpine Linux v3.24 | Debian GNU/Linux 13 (trixie) |
-| Noyau | Linux 7.0.0-38-generic | Noyau partagé avec la VM | Noyau partagé avec la VM |
-| Taille | Dossier de la VM : 7,56 Go | 13 MB sur disque ; contenu de 3.94 MB | 243 MB sur disque ; contenu de 66.8 MB |
-| Temps mesuré | 34.973 s au total | 2.290 s puis 1.962 s pour la commande `echo` | Temps de démarrage non relevé |
-| Mémoire | 627 Mi utilisés par la VM | 352 KiB pour le conteneur pendant la mesure | 3.504 MiB pour le conteneur pendant la mesure |
+| Taille sur disque | Partition principale : 19 Go ; disque configuré : 20 Go | 243 MB | 13 MB |
+| Temps de démarrage | 7 min 9,128 s selon `systemd-analyze` | Non mesuré séparément | 0,654 s |
+| Mémoire utilisée | 442 MiB | Environ 3,402 MiB | Non mesurée |
+| Système | Ubuntu 24.04.5 LTS | Debian GNU/Linux 13.7 | Alpine Linux 3.24.4 |
+| Noyau | 6.8.0-147-generic | Partagé avec la VM | Partagé avec la VM |
 
-## 2.6. Questions
+**Remarque :** les 19 Go correspondent à la taille de la partition principale de la VM, et non à la taille exacte du dossier de la VM demandé dans le sujet. La taille du dossier de la VM du TP1 n'a pas été relevée dans les résultats disponibles. Les mesures de mémoire et de démarrage ne sont pas toutes directement comparables, car elles ne portent pas sur les mêmes éléments.
 
-### Q1. Dans quel rapport le conteneur est-il plus léger et plus rapide que la VM ? Les mesures confirment-elles le tableau du cours ?
+### Réponses aux questions
 
-**Taille.** Le dossier de la VM occupe 7,56 Go, alors que l'image Alpine pèse 13 MB sur disque (3.94 MB de contenu). L'image Alpine est donc environ 600 fois plus petite que la VM (7,56 Go ≈ 7 700 MB, divisés par 13 MB).
+**Q1. Dans quel rapport le conteneur est-il plus léger et plus rapide que la VM ? Vos mesures confirment-elles le tableau du cours ?**
 
-**Mémoire.** La VM utilise 627 Mi, alors qu'un conteneur Alpine en pause n'utilise que 352 KiB (environ 1 800 fois moins) et un conteneur Nginx 3.504 MiB (environ 180 fois moins). Ces conteneurs ne font presque rien pendant la mesure, donc l'écart est surtout indicatif.
+L'image Alpine occupe environ 13 MB, alors que la partition principale de la VM dispose de 19 Go. Le conteneur est donc beaucoup plus léger qu'un système complet.
 
-**Vitesse.** La VM met 34.973 s à démarrer, alors que nos deux exécutions de la commande Alpine ont pris 2.290 s et 1.962 s, soit environ 15 à 18 fois moins.
+Le démarrage d'Alpine a pris 0,654 seconde, contre 429,128 secondes affichées par `systemd-analyze` pour le démarrage de la VM.
 
-Il faut toutefois être prudent : pour la vitesse, nous comparons le démarrage complet d'une VM avec l'exécution d'une simple commande dans un conteneur, ce ne sont pas tout à fait les mêmes opérations. Pour la taille, la VM contient un système complet et ses données, alors qu'Alpine est volontairement minimale. Les mesures vont néanmoins dans le sens du cours : un conteneur est beaucoup plus léger et beaucoup plus rapide à lancer qu'une VM.
+Le rapport calculé à partir de ces deux durées est d'environ 656. Il faut cependant préciser que les deux mesures ne représentent pas exactement la même opération : l'une mesure l'exécution d'un conteneur, l'autre le démarrage complet de la VM.
 
-### Q2. Pourquoi le premier `time docker run` est-il plus long que le second ?
+Les résultats confirment globalement que les conteneurs sont plus légers et peuvent démarrer beaucoup plus rapidement qu'une machine virtuelle.
 
-Le premier essai a duré 2.290 s, contre 1.962 s pour le second. L'image Alpine avait déjà été téléchargée avec `docker pull alpine` avant les mesures, donc le téléchargement n'explique pas forcément l'écart. Nos résultats montrent seulement que le deuxième essai est plus court, sans qu'on puisse en identifier la cause avec certitude. Si l'image n'avait pas été présente, le téléchargement aurait bien sûr allongé le premier essai.
+**Q2. Pourquoi le premier time docker run est-il plus long que le second ?**
 
-### Q3. Citez un cas où vous choisiriez quand même une VM plutôt qu'un conteneur.
+Le premier lancement peut nécessiter le téléchargement de l'image et la préparation des différentes couches.
 
-On choisirait une VM pour faire tourner un système d'exploitation complètement différent de celui de l'hôte, ou quand on a besoin d'une isolation matérielle forte assurée par un hyperviseur.
+Au deuxième lancement, l'image est déjà présente localement et les couches sont disponibles. Docker n'a donc pas besoin de les télécharger à nouveau.
 
-## 2.7. Bilan de la partie
+Dans nos mesures, le premier lancement a pris 0,730 seconde et le deuxième 0,654 seconde. La différence observée est faible, mais le deuxième lancement a bien été plus rapide.
 
-Nous avons comparé plusieurs mesures entre la VM Ubuntu et les conteneurs Alpine et Nginx. L'image Alpine est très compacte et le conteneur Nginx consomme très peu de mémoire. En revanche, il nous manque certaines valeurs, donc nous ne pouvons pas calculer tous les rapports demandés.
+**Q3. Citez un cas où vous choisiriez quand même une VM plutôt qu'un conteneur.**
+
+Je choisirais une machine virtuelle lorsque je dois installer un système d'exploitation complet avec son propre noyau, tester un autre système d'exploitation ou exécuter des services qui nécessitent un environnement système indépendant.
 
 ---
 
-# Partie 3 : Conteneuriser l'API fil rouge
+# PARTIE 3 — Conteneuriser l'API fil rouge
 
-## 3.1. Présentation de l'application
+## 3.1. Création du dossier du projet
 
-L'API fil rouge est une petite application Python écrite avec Flask. Nous avons créé le dossier de travail avec les fichiers `app.py` et `requirements.txt` :
+Commande utilisée :
 
 ```bash
-mkdir -p ~/api && cd ~/api
+mkdir -p ~/api
+cd ~/api
 ```
 
-Puis nous avons regardé le contenu du dossier et affiché le code.
+Le dossier `api` a été créé dans le répertoire personnel de l'utilisateur `ubuntu`.
 
-**Commande saisie et résultat :**
+## 3.2. Création du fichier app.py
 
-```console
-etudiant@ubuntusrv:~/api$ ls
-Dockerfile  app.py  requirements.txt
-```
+Le fichier `app.py` contient le code de l'API Flask.
 
-**Commande saisie et résultat :**
+Version initiale :
 
-```console
-etudiant@ubuntusrv:~/api$ cat app.py
+```python
 import os
 import socket
 from flask import Flask, jsonify
@@ -679,445 +615,668 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
 ```
 
-La route `/` renvoie un JSON avec trois champs :
+L'API possède deux routes au départ :
+- `/` : affiche le message de l'API, le nom du binôme et le nom du conteneur ;
+- `/sante` : permet de vérifier si l'API fonctionne.
 
-- `message` : le texte « API fil rouge » ;
-- `binome` : la valeur de la variable d'environnement `BINOME`, ou `inconnu` si elle n'est pas définie ;
-- `conteneur` : le nom d'hôte, obtenu avec `socket.gethostname()`.
+La fonction `os.environ.get()` permet de récupérer la variable d'environnement `BINOME`.
 
-La route `/sante` renvoie `{"statut":"ok"}` et sert à vérifier que l'application répond. L'application écoute sur `0.0.0.0:5000`, ce qui la rend joignable depuis l'extérieur du conteneur grâce au port publié par Docker.
+La fonction `socket.gethostname()` permet de récupérer le nom d'hôte du conteneur.
 
-## 3.2. Dockerfile
+## 3.3. Création de requirements.txt
 
-Le Dockerfile part de l'image `python:3.12-slim` :
+Commande utilisée :
+
+```bash
+echo "flask>=3,<4" > requirements.txt
+```
+
+Ce fichier indique que le projet utilise Flask dans une version supérieure ou égale à 3 et inférieure à 4.
+
+## 3.4. Création du Dockerfile
+
+Fichier `Dockerfile` :
 
 ```dockerfile
 FROM python:3.12-slim
-
 WORKDIR /app
-
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-
 EXPOSE 5000
-
 CMD ["python", "app.py"]
 ```
 
-Le fichier `requirements.txt` contient la dépendance Flask. Le fichier `.dockerignore` exclut notamment :
+Explication des instructions :
+- `FROM` définit l'image de base Python.
+- `WORKDIR` définit le répertoire de travail dans le conteneur.
+- `COPY requirements.txt .` copie le fichier des dépendances.
+- `RUN` installe Flask.
+- `COPY . .` copie les fichiers du projet.
+- `EXPOSE 5000` indique le port utilisé par l'application.
+- `CMD` définit la commande exécutée au démarrage du conteneur.
 
-```text
-__pycache__/
-*.pyc
-.git
+## 3.5. Création du fichier .dockerignore
+
+Commande utilisée :
+
+```bash
+printf '__pycache__/\n*.pyc\n.git\n' > .dockerignore
 ```
 
-## 3.3. Construction de l'image
+Ce fichier permet d'exclure certains éléments du contexte de construction de l'image, notamment les fichiers Python temporaires et le dossier Git.
 
-### Vérifications avant le build
+## 3.6. Construction de l'image api:1.0
 
-Avant de construire l'image, nous avons fait deux erreurs en tapant `docker image` sans sous-commande, puis nous avons essayé d'afficher l'historique d'une image qui n'existait pas encore.
+Commande utilisée :
 
-```console
-etudiant@ubuntusrv:~/api$ docker image api
-docker: unknown command: docker image api
-
-Usage:  docker image
-
-Run 'docker image --help' for more information
+```bash
+docker build -t api:1.0 .
 ```
 
-```console
-etudiant@ubuntusrv:~/api$ docker image
-Usage:  docker image COMMAND
+Cette commande construit une image Docker appelée `api` avec le tag `1.0`.
 
-Manage images
+La construction s'est terminée correctement après environ 91,5 secondes.
 
-Commands:
-  build       Build an image from a Dockerfile
-  history     Show the history of an image
-  import      Import the contents from a tarball to create a filesystem image
-  inspect     Display detailed information on one or more images
-  load        Load an image from a tar archive or STDIN
-  ls          List images
-  prune       Remove unused images
-  pull        Download an image from a registry
-  push        Upload an image to a registry
-  rm          Remove one or more images
-  save        Save one or more images to a tar archive (streamed to STDOUT by default)
-  tag         Create a tag TARGET_IMAGE that refers to SOURCE_IMAGE
+Vérification :
 
-Run 'docker image COMMAND --help' for more information on a command.
+```bash
+docker images api
 ```
 
-```console
-etudiant@ubuntusrv:~/api$ docker history api:1.0
-Error response from daemon: No such image: api:1.0
-```
-
-Ce dernier message est normal : l'image `api:1.0` n'avait pas encore été construite.
-
-### Première tentative de build : une erreur
-
-```console
-etudiant@ubuntusrv:~/api$ docker build -t api:1.0
-ERROR: docker: 'docker buildx build' requires 1 argument
-
-Usage:  docker buildx build [OPTIONS] PATH | URL | -
-
-Run 'docker buildx build --help' for more information
-```
-
-Il manquait le chemin du contexte de construction, c'est-à-dire le point à la fin de la commande.
-
-### Build réussi
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker build -t api:1.0 .
-[+] Building 5.0s (11/11) FINISHED                                          docker:default
- => [internal] load build definition from Dockerfile                                  0.1s
- => => transferring dockerfile: 195B                                                  0.0s
- => [internal] load metadata for docker.io/library/python:3.12-slim                   2.2s
- => [auth] library/python:pull token for registry-1.docker.io                         0.0s
- => [internal] load .dockerignore                                                     0.1s
- => => transferring context: 64B                                                      0.0s
- => [1/5] FROM docker.io/library/python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2   0.2s
- => => resolve docker.io/library/python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2  0.2s
- => [internal] load build context                                                     0.0s
- => => transferring context: 125B                                                     0.0s
- => CACHED [2/5] WORKDIR /app                                                         0.0s
- => CACHED [3/5] COPY requirements.txt .                                              0.0s
- => CACHED [4/5] RUN pip install --no-cache-dir -r requirements.txt                   0.0s
- => CACHED [5/5] COPY . .                                                             0.0s
- => exporting to image                                                                1.8s
- => => exporting layers                                                               0.0s
- => => exporting manifest sha256:ceceeea61c5825ededef229997522e7c72c136168981c5d74bad88bc6f8cfff7   0.0s
- => => exporting config sha256:cad5f1e2f150ae5a0020c22d7a1c2c8d5e2f6f534e9c753365188d5968c05f9d     0.0s
- => => exporting attestation manifest sha256:68444b22cd48993fb32518b99d47fd8c1b7a4ca3623ba6a7e851c80cd3ad5ac3  0.2s
- => => exporting manifest list sha256:a57011b278a1d0e38e532e2ba8da9e37f2115eca9972bec7966a1f2ac7b11f78         0.1s
- => => naming to docker.io/library/api:1.0                                            0.0s
- => => unpacking to docker.io/library/api:1.0                                         1.2s
-```
-
-La construction a pris 5.0 secondes. Les étapes suivantes étaient marquées `CACHED` :
-
-- `WORKDIR /app` ;
-- `COPY requirements.txt .` ;
-- `RUN pip install --no-cache-dir -r requirements.txt` ;
-- `COPY . .`.
-
-Docker réutilise ainsi les étapes déjà construites tant que leurs entrées n'ont pas changé. Les durées les plus longues sont le chargement des métadonnées de l'image Python (2.2 s), l'export de l'image (1.8 s) et son déballage (1.2 s).
-
-## 3.4. Taille et historique de l'image `api:1.0`
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker images api
-
-IMAGE     ID             DISK USAGE   CONTENT SIZE   EXTRA
-api:1.0   a57011b278a1        198MB         48.3MB
-```
+Résultat observé :
 
 | Élément | Valeur |
 |---|---|
-| Image | `api:1.0` |
-| ID de l'image | `a57011b278a1` |
-| Taille sur disque (*DISK USAGE*) | 198 MB |
-| Taille du contenu (*CONTENT SIZE*) | 48.3 MB |
+| Repository | api |
+| Tag | 1.0 |
+| Image ID | 9a578a6dafcb |
+| Taille disque affichée | 198 MB |
+| Content size | 48,3 MB |
 
-**Commande saisie et résultat :**
+## 3.7. Inspection des couches de l'image
 
-```console
-etudiant@ubuntusrv:~/api$ docker history api:1.0
-IMAGE          CREATED                  CREATED BY                                      SIZE      COMMENT
-a57011b278a1   3 hours ago              CMD ["python" "app.py"]                         0B        buildkit.dockerfile.v0
-<missing>      3 hours ago              EXPOSE [5000/tcp]                               0B        buildkit.dockerfile.v0
-<missing>      3 hours ago              COPY . . # buildkit                             20.5kB    buildkit.dockerfile.v0
-<missing>      3 hours ago              RUN /bin/sh -c pip install --no-cache-dir -r…   15.3MB    buildkit.dockerfile.v0
-<missing>      3 hours ago              COPY requirements.txt . # buildkit              12.3kB    buildkit.dockerfile.v0
-<missing>      3 hours ago              WORKDIR /app                                    8.19kB    buildkit.dockerfile.v0
-<missing>      Less than a second ago   CMD ["python3"]                                 0B        buildkit.dockerfile.v0
-<missing>      Less than a second ago   RUN /bin/sh -c set -eux; for src in idle3 p…    16.4kB    buildkit.dockerfile.v0
-<missing>      Less than a second ago   RUN /bin/sh -c set -eux; savedAptMark="$(a…     41.4MB    buildkit.dockerfile.v0
-<missing>      Less than a second ago   ENV PYTHON_SHA256=c2c4321961fab0fb999d66e0ce…   0B        buildkit.dockerfile.v0
-<missing>      Less than a second ago   ENV PYTHON_VERSION=3.12.15                      0B        buildkit.dockerfile.v0
-<missing>      Less than a second ago   ENV GPG_KEY=7169605F62C751356D054A26A821E680…   0B        buildkit.dockerfile.v0
-<missing>      Less than a second ago   RUN /bin/sh -c set -eux; apt-get update; a…     4.92MB    buildkit.dockerfile.v0
-<missing>      Less than a second ago   ENV LANG=C.UTF-8                                0B        buildkit.dockerfile.v0
-<missing>      Less than a second ago   ENV PATH=/usr/local/bin:/usr/local/sbin:/usr…   0B        buildkit.dockerfile.v0
-<missing>      About an hour ago        # debian.sh --arch 'amd64' out/ 'trixie' '@1…   87.7MB    debuerreotype 0.17
+Commande utilisée :
+
+```bash
+docker history api:1.0
 ```
 
-La sortie compte **16 entrées**. Celles qui viennent de notre Dockerfile sont :
+Cette commande affiche les différentes couches de l'image.
 
-1. `WORKDIR /app` ;
-2. `COPY requirements.txt .` ;
-3. `RUN pip install --no-cache-dir -r ...` ;
-4. `COPY . .` ;
-5. `EXPOSE 5000/tcp` ;
-6. `CMD ["python" "app.py"]`.
+Les instructions issues de notre Dockerfile sont :
+1. `WORKDIR /app`
+2. `COPY requirements.txt .`
+3. `RUN pip install --no-cache-dir -r requirements.txt`
+4. `COPY . .`
+5. `EXPOSE 5000`
+6. `CMD ["python", "app.py"]`
 
-Les autres entrées viennent de l'image de base Python/Debian (Python 3.12.15 sur Debian « trixie », architecture amd64). Les mentions `<missing>` sont normales : seules la dernière couche porte un identifiant d'image local.
+Le reste des couches provient de l'image de base `python:3.12-slim`.
 
-### Pourquoi copier `requirements.txt` et installer les dépendances avant de copier le code ?
+## 3.8. Lancement de l'API
 
-C'est pour profiter du cache. `requirements.txt` change beaucoup moins souvent que le code. Si on ne modifie que le code, Docker réutilise les couches d'installation des dépendances au lieu de tout refaire. Les lignes `CACHED` du build en sont un bon exemple.
+Commande utilisée :
 
-## 3.5. Lancement du conteneur API
-
-Avant de lancer le conteneur, nous avons vérifié qu'aucun conteneur n'existait déjà.
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker ps -a
-CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+```bash
+docker run -d --name api -p 5000:5000 -e BINOME="ABE-AKELY-DANHO" api:1.0
 ```
 
-Seul l'en-tête s'affiche : il n'y a aucun conteneur, ni en cours ni arrêté.
+Cette commande :
+- lance le conteneur en arrière-plan ;
+- lui donne le nom `api` ;
+- expose le port 5000 ;
+- transmet le nom du binôme avec la variable d'environnement `BINOME`.
 
-**Commande saisie et résultat :**
+Vérification de la route principale :
 
-```console
-etudiant@ubuntusrv:~/api$ docker run -d --name api-test -p 5000:5000 api:1.0
-bc4e4586ba56367c61c726daecb53699317c8a31c48275518fec5469a1cfd381
+```bash
+curl http://localhost:5000
 ```
 
-Le conteneur tourne en arrière-plan, s'appelle `api-test` et son port 5000 est publié sur le port 5000 de l'hôte. Docker affiche son identifiant complet.
+Résultat obtenu :
 
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ docker ps
-CONTAINER ID   IMAGE     COMMAND           CREATED         STATUS         PORTS                                         NAMES
-bc4e4586ba56   api:1.0   "python app.py"   8 seconds ago   Up 8 seconds   0.0.0.0:5000->5000/tcp, [::]:5000->5000/tcp   api-test
+```json
+{"binome":"ABE-AKELY-DANHO","conteneur":"b91f8fb1515a","message":"API fil rouge"}
 ```
 
-| Champ | Valeur |
-|---|---|
-| ID court | `bc4e4586ba56` |
-| Image | `api:1.0` |
-| Commande | `python app.py` |
-| État | `Up 8 seconds` |
-| Redirection IPv4 | `0.0.0.0:5000->5000/tcp` |
-| Redirection IPv6 | `[::]:5000->5000/tcp` |
-| Nom du conteneur | `api-test` |
+Vérification de la route santé :
 
-## 3.6. Test de la route `/`
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ curl http://localhost:5000/
-{"binome":"inconnu","conteneur":"bc4e4586ba56","message":"API fil rouge"}
+```bash
+curl http://localhost:5000/sante
 ```
 
-- `binome` vaut `inconnu` parce que nous n'avons pas défini la variable `BINOME` au lancement ;
-- `conteneur` vaut `bc4e4586ba56`, le nom d'hôte renvoyé par `socket.gethostname()`, qui correspond à l'ID court du conteneur ;
-- `message` contient bien `API fil rouge`.
+Résultat :
 
-On remarque aussi que les clés sont affichées dans l'ordre alphabétique (`binome`, `conteneur`, `message`).
-
-## 3.7. Test de la route `/sante`
-
-**Commande saisie et résultat :**
-
-```console
-etudiant@ubuntusrv:~/api$ curl http://localhost:5000/sante
+```json
 {"statut":"ok"}
 ```
 
-Les deux tests montrent que l'application Flask fonctionne dans le conteneur et que la redirection du port 5000 est correcte.
-
-Nous avons aussi consulté les journaux du conteneur avec :
+Les journaux ont également été consultés avec :
 
 ```bash
 docker logs api
 ```
 
-Cette commande affiche les messages de Flask et les requêtes HTTP reçues par l'application.
+## 3.9. Lancement de trois copies de la même image
 
-## 3.8. Variable d'environnement `BINOME`
+Le sujet demande de lancer trois copies de la même image sur trois ports différents.
 
-Pour afficher le nom du binôme dans la réponse, on définit la variable au lancement du conteneur :
-
-```bash
-docker run -d --name api -p 5000:5000 -e BINOME="Binome-TP2" api:1.0
-curl -s http://localhost:5000
-curl -s http://localhost:5000/sante
-```
-
-**Résultats :**
-
-```console
-{"binome":"Binome-TP2","conteneur":"a19c19429988","message":"API fil rouge"}
-{"statut":"ok"}
-```
-
-Cette fois, le champ `binome` affiche bien `Binome-TP2`, et le champ `conteneur` a changé (`a19c19429988`) parce que ce nouveau conteneur a un nouvel identifiant.
-
-Une variable d'environnement permet de garder la configuration séparée du code source. En revanche, les secrets comme les mots de passe ou les clés ne doivent pas être écrits en dur dans le code ou dans l'image : il faut les gérer avec des mécanismes adaptés.
-
-## 3.9. Lancement de trois copies de l'API
-
-Nous avons lancé trois conteneurs à partir de la même image, sur les ports 5001, 5002 et 5003, puis interrogé chacun :
+Commandes utilisées :
 
 ```bash
-for p in 5001 5002 5003; do docker run -d --name api-$p -p $p:5000 -e BINOME="Binome-TP2" api:1.0; done
-for p in 5001 5002 5003; do curl -s http://localhost:$p; echo; done
+for p in 5001 5002 5003; do
+  docker run -d --name api-$p -p $p:5000 -e BINOME="ABE-AKELY-DANHO" api:1.0
+done
+```
+
+Interrogation des trois conteneurs :
+
+```bash
+for p in 5001 5002 5003; do
+  curl -s http://localhost:$p
+  echo
+done
+```
+
+Résultats observés :
+
+Les trois conteneurs ont renvoyé le même nom de binôme, mais chacun avait un identifiant de conteneur différent.
+
+Identifiants observés :
+- `c91fe15c0ec6`
+- `e900a3e25fb1`
+- `26aa88aa55b9`
+
+Suppression des copies temporaires :
+
+```bash
 docker rm -f api-5001 api-5002 api-5003
 ```
 
-Les valeurs du champ `conteneur` renvoyées par les trois copies sont :
+Les trois conteneurs ont été supprimés correctement.
 
-| Port | Valeur du champ `conteneur` |
-|---|---|
-| 5001 | `71bc8b8f46f1` |
-| 5002 | `402984b32771` |
-| 5003 | `e3382f736d28` |
+## 3.10. Ajout de la route /version
 
-Chaque copie renvoie un nom d'hôte différent : les trois conteneurs sont bien des instances distinctes de la même image. Cette expérience illustre le passage à l'échelle horizontal (*scaling*) : on peut multiplier les instances d'une même image très facilement. Les conteneurs de test sont ensuite supprimés avec `docker rm -f`.
+Le fichier `app.py` a été modifié pour ajouter une troisième route :
 
-## 3.10. Ajout de la route `/version`
+```python
+@app.get("/version")
+def version():
+    return jsonify(version="1.1")
+```
 
-Le sujet demande d'ajouter une route `/version` qui renvoie :
+Cette route renvoie la version de l'API.
+
+La nouvelle version du fichier contient donc trois routes :
+- `/`
+- `/sante`
+- `/version`
+
+## 3.11. Construction de la nouvelle image api:1.1
+
+Commande utilisée :
+
+```bash
+docker build -t api:1.1 .
+```
+
+La construction s'est terminée correctement.
+
+Résultat important : Docker a affiché plusieurs lignes `CACHED`.
+
+Les instructions suivantes ont été réutilisées depuis le cache :
+- `WORKDIR /app`
+- `COPY requirements.txt .`
+- `RUN pip install --no-cache-dir -r requirements.txt`
+
+L'instruction `COPY . .` a été exécutée à nouveau pour intégrer le nouveau code.
+
+Remplacement de l'ancien conteneur :
+
+```bash
+docker rm -f api
+docker run -d --name api -p 5000:5000 api:1.1
+```
+
+Vérification de la nouvelle route :
+
+```bash
+curl -s http://localhost:5000/version
+```
+
+Résultat obtenu :
 
 ```json
 {"version":"1.1"}
 ```
 
-Nous avons ensuite reconstruit l'image avec le tag `api:1.1`, relancé le conteneur et testé la route :
+La version 1.1 de l'API fonctionne correctement.
 
-```bash
-docker build -t api:1.1 .
-docker rm -f api && docker run -d --name api -p 5000:5000 api:1.1
-curl -s http://localhost:5000/version
-docker history api:1.1
-```
+### Réponses aux questions
 
-La reconstruction réutilise les couches en cache : seules les couches qui suivent la modification du code sont refaites. `docker history api:1.1` permet de le vérifier.
+**Q1. Quelle est la taille de l'image api:1.0 ? Combien de couches docker history affiche-t-il, et lesquelles viennent de votre Dockerfile ?**
 
+La taille affichée pour `api:1.0` est de 198 MB sur disque, avec un content size de 48,3 MB.
 
-## 3.11. Bilan de la partie
+Le Dockerfile contient six instructions principales :
+- WORKDIR
+- COPY requirements.txt
+- RUN pip install
+- COPY .
+- EXPOSE
+- CMD
 
-Dans cette partie, nous avons construit une image à partir d'une application Flask, examiné ses couches et vu le cache de construction à l'œuvre. Le conteneur `api-test` a démarré sans problème et les routes `/` et `/sante` répondent correctement. La variable `BINOME` permet de personnaliser la réponse sans toucher au code, et le lancement de trois instances montre qu'une même image peut servir à faire tourner plusieurs conteneurs.
+Les autres couches proviennent de l'image de base Python.
+
+**Q2. Pourquoi copie-t-on requirements.txt et installe-t-on les dépendances avant de copier le code ?**
+
+On copie d'abord `requirements.txt` et on installe les dépendances avant de copier le code pour profiter du cache Docker.
+
+Si seul le code de l'application change, Docker peut conserver les couches correspondant à l'installation des dépendances.
+
+Dans notre cas, lors de la construction de `api:1.1`, les instructions `WORKDIR`, `COPY requirements.txt` et `RUN pip install` ont été réutilisées grâce au cache. Seule la copie du code a été exécutée à nouveau.
+
+Cela permet de gagner du temps lors des reconstructions.
+
+**Q3. Que renvoie le champ conteneur pour les trois copies de l'étape 5 ? Quelle caractéristique du cloud cette expérience illustre-t-elle ?**
+
+Les trois copies renvoient des identifiants différents :
+- `c91fe15c0ec6`
+- `e900a3e25fb1`
+- `26aa88aa55b9`
+
+Cela montre qu'une même image peut être exécutée plusieurs fois dans des conteneurs indépendants.
+
+Cette expérience illustre la scalabilité horizontale : on peut lancer plusieurs instances d'une application pour répartir la charge et augmenter la capacité du service.
+
+**Q4. Pourquoi passer le nom du binôme par une variable d'environnement plutôt que de l'écrire dans le code ? Quel lien avec les secrets ?**
+
+Une variable d'environnement permet de modifier une information sans changer le code de l'application ni reconstruire l'image.
+
+La même image peut ainsi être utilisée avec différentes configurations.
+
+Pour les mots de passe et les clés d'API, il faut éviter de les écrire directement dans le code ou de les intégrer dans une image Docker. Ils doivent être transmis de manière sécurisée au moment de l'exécution, à l'aide de mécanismes adaptés de gestion des secrets.
 
 ---
 
-# Partie 4 : Publier l'image et nettoyer
+# PARTIE 4 — Publier l'image et nettoyer
 
 ## 4.1. Publication sur Docker Hub
 
-L'image publiée est :
+Le registre choisi est Docker Hub.
+
+Identifiants utilisés pour le dépôt :
+- Compte Docker Hub : `ayce1324`
+- Nom du dépôt : `api-fil-rouge`
+- Version publiée : `1.1`
+
+Le problème de résolution DNS rencontré lors de la connexion à Docker Hub a été corrigé temporairement avec les commandes suivantes :
+
+```bash
+sudo resolvectl dns eth0 1.1.1.1#one.one.one.one
+sudo resolvectl dnsovertls eth0 yes
+```
+
+La résolution DNS a ensuite été vérifiée avec :
+
+```bash
+resolvectl query auth.docker.io
+```
+
+La connexion au registre a été testée avec :
+
+```bash
+curl -I --max-time 15 https://registry-1.docker.io/v2/
+```
+
+Le serveur a répondu avec le code HTTP `401`. Cette réponse est normale pour une requête au registre sans authentification préalable.
+
+Connexion à Docker Hub :
+
+```bash
+docker login
+```
+
+La connexion a réussi.
+
+## 4.2. Attribution du nom Docker Hub à l'image
+
+Commande utilisée :
+
+```bash
+docker tag api:1.1 ayce1324/api-fil-rouge:1.1
+```
+
+Cette commande ajoute un nom permettant d'identifier l'image sur Docker Hub.
+
+Vérification :
+
+```bash
+docker images
+```
+
+Les deux noms correspondaient à la même image locale.
+
+Identifiant observé :
+
+```text
+9ad81c214cc1
+```
+
+## 4.3. Publication de l'image
+
+Commande utilisée :
+
+```bash
+docker push ayce1324/api-fil-rouge:1.1
+```
+
+La publication s'est terminée correctement.
+
+Digest obtenu :
+
+```text
+sha256:9ad81c214cc16ae45e086f69a83eb48299a7079af4e8ef7444c7f4ca59703f8f
+```
+
+L'image est disponible à l'adresse :
+
+**https://hub.docker.com/r/ayce1324/api-fil-rouge**
+
+La visibilité du dépôt a été vérifiée sur Docker Hub. Le dépôt est **public**.
+
+## 4.4. Vérification du téléchargement depuis Docker Hub
+
+Pour vérifier que l'image était bien disponible sur le registre, le conteneur et les images locales ont été supprimés.
+
+Commandes utilisées :
+
+```bash
+docker rm -f api
+docker rmi api:1.1 ayce1324/api-fil-rouge:1.1
+```
+
+Téléchargement depuis Docker Hub :
+
+```bash
+docker pull ayce1324/api-fil-rouge:1.1
+```
+
+Le téléchargement a réussi.
+
+Le digest obtenu correspondait à celui de la publication :
+
+```text
+sha256:9ad81c214cc16ae45e086f69a83eb48299a7079af4e8ef7444c7f4ca59703f8f
+```
+
+L'image a ensuite été lancée :
+
+```bash
+docker run -d --name api -p 5000:5000 ayce1324/api-fil-rouge:1.1
+```
+
+Vérification :
+
+```bash
+curl -s http://localhost:5000/version
+```
+
+Résultat :
+
+```json
+{"version":"1.1"}
+```
+
+La route `/version` fonctionnait bien après téléchargement de l'image depuis Docker Hub.
+
+Lors d'un premier test de la route principale sans variable d'environnement, le résultat était :
+
+```json
+{"binome":"inconnu","conteneur":"f8eb8f98535f","message":"API fil rouge"}
+```
+
+Cela est normal, car la variable `BINOME` n'avait pas été transmise lors de ce lancement.
+
+Le conteneur a donc été relancé avec la variable correcte :
+
+```bash
+docker rm -f api
+docker run -d --name api -p 5000:5000 -e BINOME="ABE-AKELY-DANHO" ayce1324/api-fil-rouge:1.1
+```
+
+Résultat de la vérification :
+
+```bash
+curl -s http://localhost:5000
+```
+
+```json
+{"binome":"ABE-AKELY-DANHO","conteneur":"d5d19a57b945","message":"API fil rouge"}
+```
+
+Cela confirme que l'image publiée sur Docker Hub fonctionne correctement et que la variable d'environnement est bien prise en compte.
+
+## 4.5. Nettoyage des conteneurs et des images
+
+Avant le nettoyage, la commande suivante a été exécutée :
+
+```bash
+docker system df
+```
+
+Résultat observé :
+
+```text
+TYPE            TOTAL     ACTIVE    SIZE       RECLAIMABLE
+Images          5         3         352.7MB    291.4MB (82%)
+Containers      3         2         315.4kB    4.096kB (1%)
+Local Volumes   0         0         0B         0B
+Build Cache     12        0         110.3MB    36.86kB
+```
+
+Suppression des conteneurs :
+
+```bash
+docker rm -f $(docker ps -aq)
+```
+
+Trois conteneurs ont été supprimés.
+
+Après cette suppression, `docker system df` affichait :
+
+```text
+Images          5    0    352.3MB    86.98MB (24%)
+Containers      0    0    0B         0B
+Local Volumes   0    0    0B         0B
+Build Cache     12   0    110.3MB    36.86kB
+```
+
+Suppression des images inutilisées :
+
+```bash
+docker image prune -a -f
+```
+
+Docker a supprimé les images locales inutilisées, notamment :
+- `ayce1324/api-fil-rouge:1.1`
+- `alpine:latest`
+- `api:1.0`
+- `hello-world:latest`
+- `nginx:latest`
+
+Espace récupéré annoncé par Docker :
+
+```text
+Total reclaimed space: 40.94MB
+```
+
+Vérification finale :
+
+```bash
+docker system df
+```
+
+Résultat obtenu :
+
+```text
+Images          0    0    149.7MB    149.7MB (100%)
+Containers      0    0    0B         0B
+Local Volumes   0    0    0B         0B
+Build Cache     12   0    110.3MB    110.3MB (100%)
+```
+
+La sortie finale indique qu'il n'y a plus d'image ni de conteneur répertorié. Le cache de construction est encore présent.
+
+La commande `docker image prune -a -f` a annoncé une récupération de `40.94 MB`. Il ne faut pas confondre cette valeur avec la taille affichée dans la colonne `SIZE` de la dernière commande `docker system df`.
+
+Docker a été conservé dans la VM pour les séances suivantes, comme demandé dans le sujet.
+
+## 4.6. Vérification de l'accès depuis le navigateur Windows
+
+Après le nettoyage, un dernier test a été réalisé pour vérifier l'accès à l'API depuis Windows.
+
+L'image a été téléchargée à nouveau depuis Docker Hub et lancée dans Ubuntu :
+
+```bash
+docker run -d --name api -p 5000:5000 -e BINOME="ABE-AKELY-DANHO" ayce1324/api-fil-rouge:1.1
+```
+
+Le conteneur était actif et le test local a réussi :
+
+```bash
+curl http://localhost:5000
+```
+
+Résultat :
+
+```json
+{"binome":"ABE-AKELY-DANHO","conteneur":"aa883acd4f52","message":"API fil rouge"}
+```
+
+Les journaux ont confirmé que Flask écoutait sur toutes les interfaces :
+
+```text
+* Running on all addresses (0.0.0.0)
+* Running on http://127.0.0.1:5000
+* Running on http://172.17.0.2:5000
+```
+
+Depuis Google Chrome sous Windows, l'adresse suivante a été testée :
+
+```text
+http://10.97.0.65:5000
+```
+
+La page a fonctionné et a affiché la réponse JSON de l'API.
+
+La route `/version` a également été testée depuis Ubuntu :
+
+```bash
+curl -i http://localhost:5000/version
+```
+
+Résultat :
+
+```text
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.9 Python/3.12.16
+Content-Type: application/json
+
+{"version":"1.1"}
+```
+
+La route `/version` a finalement été affichée correctement dans le navigateur Windows après une nouvelle tentative avec l'adresse exacte :
+
+```text
+http://10.97.0.65:5000/version
+```
+
+Cette vérification confirme que l'API est accessible depuis l'hôte Windows et que la version 1.1 fonctionne.
+
+Après le test, le conteneur a été supprimé :
+
+```bash
+docker rm -f api
+```
+
+Résultat :
+
+```text
+api
+```
+
+Le conteneur a donc bien été supprimé. L'image reste disponible sur Docker Hub.
+
+### Réponses aux questions
+
+**Q1. Indiquez l'adresse complète de votre image publiée. Est-elle publique ou privée ?**
+
+Adresse complète du dépôt :
+
+https://hub.docker.com/r/ayce1324/api-fil-rouge
+
+Nom de l'image :
 
 ```text
 ayce1324/api-fil-rouge:1.1
 ```
 
-**Commandes saisies** pour nous connecter, étiqueter l'image et la publier :
+Le dépôt a été vérifié sur Docker Hub et il est public.
 
-```bash
-docker login -u ayce1324
-docker tag api:1.1 ayce1324/api-fil-rouge:1.1
-docker push ayce1324/api-fil-rouge:1.1
+**Q2. Pourquoi étiqueter l'image avec un numéro de version (1.1) plutôt que de toujours utiliser latest ?**
+
+Le numéro de version permet de reconnaître précisément la version d'une application.
+
+Il facilite le suivi des modifications, le déploiement d'une version précise et le retour à une ancienne version en cas de problème.
+
+Le tag `latest` peut changer lorsqu'une nouvelle image est publiée. Il ne permet donc pas de savoir exactement quelle version est utilisée.
+
+**Q3. Quel espace disque docker image prune a-t-il libéré ? Dans le cloud, pourquoi faut-il aussi nettoyer les registres ?**
+
+La commande `docker image prune -a -f` a annoncé :
+
+```text
+Total reclaimed space: 40.94MB
 ```
 
-**Résultats :**
-
-```console
-Login Succeeded
-...
-1.1: digest: sha256:412dda176344bdc59c4d8b865f375e4b90ae10418df681e574d2d9ea1c7281c3 size: 856
-```
-
-`docker login` demande le mot de passe (ou un jeton d'accès personnel) et confirme par `Login Succeeded`. Le `docker push` envoie toutes les couches puis affiche le digest de l'image publiée.
-
-**Vérification depuis le registre :** nous avons supprimé les images locales puis relancé l'application à partir de l'image publiée :
-
-```bash
-docker rm -f api
-docker rmi ayce1324/api-fil-rouge:1.1 api:1.1
-docker run -d --name api -p 5000:5000 ayce1324/api-fil-rouge:1.1
-curl -s http://localhost:5000/version
-```
-
-Comme l'image n'existait plus en local, Docker l'a téléchargée depuis le Docker Hub (toutes les couches en `Pull complete`) avant de lancer le conteneur. Cela prouve que l'image publiée est bien utilisable par n'importe qui. Le dépôt est public, et le tag `1.1` identifie clairement une version précise.
-
-## 4.2. Nettoyage des conteneurs et des images
-
-**Commandes saisies :**
-
-```bash
-docker rm -f $(docker ps -aq)
-docker system df
-docker image prune -a -f
-docker system df
-docker pull alpine
-docker images
-```
-
-**Résultat de `docker image prune -a -f` :**
-
-```console
-Total reclaimed space: 36.97MB
-```
-
-**Résultat de `docker system df` relevé après le nettoyage :**
-
-| Type | Total | Actif | Taille | Récupérable |
-|---|---:|---:|---:|---:|
-| Images | 0 | 0 | 299.3 MB | 299.3 MB (100 %) |
-| Conteneurs | 0 | 0 | 0 B | 0 B |
-| Volumes locaux | 0 | 0 | 0 B | 0 B |
-| Cache de construction | 19 | 0 | 308.1 MB | 308.1 MB |
-
-**Résultat de `docker images` après avoir retéléchargé Alpine :**
-
-| Élément | Valeur |
-|---|---|
-| Image | `alpine:latest` |
-| ID | `71e9b7bae160` |
-| Taille sur disque | 13 MB |
-| Taille du contenu | 3.94 MB |
-
-Nettoyer permet de libérer de la place en supprimant les conteneurs et images dont on n'a plus besoin. Il faut quand même vérifier ce qu'on supprime, au cas où quelque chose serait encore utile.
-
-## 4.3. Questions
-
-### Q1. Quelle est l'adresse complète de l'image publiée ? Est-elle publique ou privée ?
-
-L'image est `ayce1324/api-fil-rouge:1.1`, sur le Docker Hub. Le dépôt est public.
-
-### Q2. Pourquoi utiliser un numéro de version comme `1.1` plutôt que toujours `latest` ?
-
-Un tag précis identifie exactement une version de l'application, garantit la traçabilité et permet de la récupérer à l'identique à chaque déploiement. Le tag `latest`, lui, peut changer au fil des publications, ce qui provoque des effets de bord.
-
-### Q3. Quel espace disque la commande de nettoyage a-t-elle libéré ? Pourquoi nettoyer aussi les images dans un registre distant ?
-
-`docker image prune -a -f` a libéré **36.97 MB** en local. Dans le cloud, nettoyer les registres évite d'accumuler d'anciennes versions d'images devenues inutiles et réduit les coûts de stockage.
-
-## 4.4. Bilan de la partie
-
-Cette partie nous a fait revoir la publication d'une image sur Docker Hub, l'intérêt des tags de version et les commandes pour nettoyer les ressources Docker locales.
+Dans le cloud, il faut nettoyer les registres pour supprimer les anciennes images qui ne sont plus utilisées. Cela permet de limiter l'espace de stockage occupé, de réduire les coûts et de faciliter la gestion des versions.
 
 ---
 
-
 # Conclusion générale
 
-Ce TP nous a fait découvrir les bases de Docker et le cycle de vie d'un conteneur.
+Ce TP nous a permis de découvrir Docker et de comprendre la différence entre une machine virtuelle et un conteneur.
 
-En comparant la VM Ubuntu avec les images Alpine et Nginx, nous avons pu observer des tailles, des temps d'exécution et une consommation de mémoire. Alpine est très compacte et un conteneur Nginx consomme très peu de mémoire quand il tourne. Nous avons aussi vérifié que le conteneur partage le noyau de la VM (`7.0.0-38-generic` des deux côtés).
+Nous avons installé Docker dans une machine virtuelle Ubuntu avec Multipass, exécuté plusieurs conteneurs, utilisé Nginx, observé les processus et les ressources consommées, puis utilisé un volume pour conserver les fichiers en dehors du conteneur.
 
-Nous avons ensuite conteneurisé une application Flask avec l'image `api:1.0`. L'historique de l'image nous a montré qu'elle est faite de plusieurs couches, certaines venant de l'image de base et d'autres de notre Dockerfile, et les étapes `CACHED` nous ont montré l'intérêt du cache. Le conteneur `api-test` a démarré correctement, les routes `/` et `/sante` répondent comme prévu, la variable `BINOME` permet de changer la configuration sans modifier le code, et trois instances de la même image ont tourné en parallèle avec des identifiants différents.
+Nous avons également comparé les images Docker et les temps d'exécution d'un conteneur avec les mesures de démarrage de la machine virtuelle.
 
-Enfin, la publication de `ayce1324/api-fil-rouge:1.1` sur Docker Hub, sa récupération depuis le registre et le nettoyage des ressources ont bouclé le cycle : construire, publier et gérer des images Docker.
+Dans la troisième partie, nous avons créé une API avec Python et Flask, écrit un Dockerfile, construit l'image `api:1.0`, puis ajouté une route `/version` pour construire la version `api:1.1`. Nous avons aussi lancé trois copies de la même image pour observer que chaque conteneur possède son propre identifiant.
 
-**En résumé, ce TP nous a appris à construire, lancer, tester, versionner et publier une application conteneurisée, tout en gardant un regard critique sur les limites de nos mesures.**
+Enfin, nous avons publié l'image sur Docker Hub, vérifié qu'elle pouvait être téléchargée à nouveau et exécutée, puis nettoyé les conteneurs et les images locales.
 
+Le test final depuis le navigateur Windows a confirmé que l'API était accessible à travers le réseau Multipass.
+
+Ce TP nous a donc permis de comprendre les principales étapes de la conteneurisation d'une application : création, construction, exécution, inspection, publication et nettoyage.
+
+---
+
+# Informations finales du projet
+
+| Élément | Valeur |
+|---|---|
+| Nom du projet | API fil rouge |
+| Langage | Python |
+| Framework | Flask |
+| Version de l'API | 1.1 |
+| Image Docker | `ayce1324/api-fil-rouge:1.1` |
+| Registre | Docker Hub |
+| Visibilité | Publique |
+| Port de l'API | 5000 |
+| Route principale | `/` |
+| Route santé | `/sante` |
+| Route version | `/version` |
+| Adresse du dépôt | https://hub.docker.com/r/ayce1324/api-fil-rouge |
+| État du nettoyage | Terminé |
