@@ -1245,6 +1245,58 @@ Dans le cloud, il faut nettoyer les registres pour supprimer les anciennes image
 
 ---
 
+## 6. Problèmes rencontrés et solutions apportées
+
+Au cours de ce TP, quelques difficultés techniques ont été rencontrées. Elles ont été résolues progressivement.
+
+### 6.1. Adaptation de VirtualBox à Multipass
+
+Le TP utilise VirtualBox, mais nous avons utilisé Multipass pour créer et gérer la machine virtuelle Ubuntu.
+
+**Solution :** les manipulations ont été adaptées à Multipass. La VM `ubuntu-srv` a été utilisée pour installer Docker et exécuter les conteneurs.
+
+### 6.2. Confusion entre le terminal Windows et le terminal Ubuntu
+
+Certaines commandes Multipass ont été exécutées dans le terminal Ubuntu. Le message `multipass: command not found` est alors apparu.
+
+**Solution :** les commandes Multipass ont été exécutées dans Windows PowerShell, tandis que les commandes Docker et Linux ont été exécutées dans le terminal Ubuntu.
+
+### 6.3. Problème de résolution DNS
+
+Lors du téléchargement et de la publication des images Docker, des difficultés de résolution DNS ont empêché certaines connexions aux serveurs Docker Hub.
+
+**Solution :** le DNS a été configuré temporairement avec Cloudflare et DNS-over-TLS :
+
+```bash
+sudo resolvectl dns eth0 1.1.1.1#one.one.one.one
+sudo resolvectl dnsovertls eth0 yes
+```
+
+Après cette configuration, la résolution DNS et les connexions à Docker Hub ont fonctionné.
+
+### 6.4. Problème avec le caractère spécial `!` dans une commande
+
+Lors de la création du fichier HTML du site Nginx, l'utilisation du caractère `!` dans une commande `echo` avec des guillemets doubles a provoqué une erreur liée à l'historique de Bash.
+
+**Solution :** les guillemets simples ont été utilisés pour encadrer le texte HTML.
+
+### 6.5. Difficulté lors de la vérification de l'API
+
+Lors des premiers tests, certaines requêtes vers l'API ont échoué temporairement. La route `/version` a également renvoyé une erreur 404 lors d'un premier essai.
+
+**Solution :** le conteneur a été vérifié, les journaux consultés et la présence de la route dans `app.py` contrôlée. Après vérification, les routes `/` et `/version` ont répondu correctement.
+
+### 6.6. Difficulté à retrouver la taille exacte du dossier de la VM
+
+La commande `multipass get local.instances` a renvoyé une erreur, car `local.instances` n'est pas une clé de configuration reconnue par Multipass.
+
+**Solution :** les informations disponibles avec `multipass info ubuntu-srv` ont été utilisées. Elles indiquent un disque de 19,3 Gio, dont 2,6 Gio sont utilisés. Cette mesure correspond à l'utilisation du disque virtuel et non à la taille exacte du dossier de stockage de la VM sur Windows. Cette dernière mesure reste à effectuer.
+
+### Bilan
+
+Malgré ces difficultés, toutes les principales manipulations du TP ont été réalisées : installation de Docker, création et exécution des conteneurs, construction de l'API Flask, publication de l'image sur Docker Hub, téléchargement de l'image publiée et vérification de son fonctionnement depuis Windows.
+
+
 # Conclusion générale
 
 Ce TP nous a permis de découvrir Docker et de comprendre la différence entre une machine virtuelle et un conteneur.
